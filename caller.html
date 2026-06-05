@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Cattle Call – Comprador</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500;600&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --green:#22c55e;--green-dim:rgba(34,197,94,.12);--green-border:rgba(34,197,94,.4);
+  --yellow:#fbbf24;--yellow-dim:rgba(251,191,36,.12);--yellow-border:rgba(251,191,36,.4);
+  --red:#f87171;--red-dim:rgba(248,113,113,.08);--red-border:rgba(248,113,113,.25);
+  --bg:#050505;--surface:#0e0e0e;--surface2:#111;--border:#1e1e1e;
+  --text:#ddd;--muted:#555;--mono:'DM Mono',monospace;
+}
+html,body{height:100%;background:var(--bg);font-family:'DM Sans',system-ui,sans-serif;overflow:hidden}
+
+/* ── CONFIRM PUJA MODAL ── */
+.confirm-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:200;
+  display:none;flex-direction:column;align-items:center;justify-content:center;
+  padding:24px;gap:20px;
+}
+.confirm-overlay.show{display:flex}
+.confirm-title{font-size:14px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;font-weight:600}
+.confirm-price{
+  font-size:42px;font-weight:700;color:var(--green);font-family:var(--mono);
+  background:rgba(34,197,94,.08);border:1px solid var(--green-border);
+  padding:18px 32px;border-radius:14px;text-align:center;
+}
+.confirm-sub{font-size:12px;color:var(--muted);text-align:center;max-width:280px;line-height:1.5}
+.confirm-actions{display:flex;flex-direction:column;gap:10px;width:100%;max-width:300px;margin-top:8px}
+.confirm-btn{
+  padding:18px;font-size:16px;font-weight:700;border-radius:14px;
+  cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid;
+  transition:all .15s;
+}
+.confirm-btn.go{background:#166534;border-color:var(--green);color:#fff}
+.confirm-btn.go:active{background:#0f4d27;transform:scale(.98)}
+.confirm-btn.cancel{background:transparent;border-color:#444;color:var(--muted)}
+.confirm-btn.cancel:active{background:#1a1a1a}
+
+/* ── JOIN SCREEN ── */
+#joinScreen{
+  position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:24px;padding:32px;z-index:100;
+}
+.join-logo{font-size:32px;margin-bottom:4px}
+.join-title{font-size:20px;font-weight:700;color:var(--text);text-align:center}
+.join-sub{font-size:13px;color:var(--muted);text-align:center}
+.join-form{display:flex;flex-direction:column;gap:12px;width:100%;max-width:300px}
+.join-input{
+  background:#111;border:1px solid #2a2a2a;border-radius:12px;
+  padding:14px 16px;font-size:16px;color:var(--text);font-family:'DM Sans',sans-serif;
+  outline:none;transition:border-color .2s;text-align:center;letter-spacing:2px;
+}
+.join-input:focus{border-color:#444}
+.join-input::placeholder{color:#333;letter-spacing:0}
+.join-btn{
+  background:#166534;border:1px solid var(--green);border-radius:12px;
+  padding:14px;font-size:15px;font-weight:600;color:var(--green);
+  cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;
+}
+.join-btn:active{background:#0f4d27}
+.join-error{font-size:12px;color:var(--red);text-align:center;min-height:16px}
+
+/* ── WAITING SCREEN ── */
+#waitScreen{
+  position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;
+  align-items:center;justify-content:center;gap:16px;padding:32px;z-index:90;
+}
+.wait-dot{width:12px;height:12px;border-radius:50%;background:#dc2626;animation:blink 1.1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.wait-title{font-size:16px;font-weight:600;color:var(--text)}
+.wait-sub{font-size:12px;color:var(--muted);text-align:center}
+.wait-room{font-size:28px;font-weight:700;color:var(--yellow);font-family:var(--mono);letter-spacing:4px}
+
+/* ── MAIN APP ── */
+#app{
+  display:none;flex-direction:column;height:100%;max-width:430px;margin:0 auto;
+  background:var(--surface);
+}
+.sbar{height:36px;background:var(--surface2);display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;border-bottom:1px solid var(--border)}
+.sbar .t{color:var(--text);font-size:12px;font-weight:600}
+.sbar .ic{color:var(--muted);font-size:11px}
+.topbar{background:var(--surface2);padding:6px 12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid var(--border)}
+.ct{color:var(--text);font-size:11px;font-weight:600}
+.cm{color:var(--muted);font-size:9px;margin-top:1px}
+.tmr{color:var(--green);font-size:12px;font-weight:600;font-family:var(--mono)}
+.strip{background:var(--surface2);display:flex;gap:3px;padding:4px 6px;flex-shrink:0;overflow-x:auto;border-bottom:1px solid var(--border)}
+.strip::-webkit-scrollbar{display:none}
+.sc{display:flex;flex-direction:column;align-items:center;gap:2px;width:64px;padding:3px;border-radius:7px;border:1.5px solid transparent;flex-shrink:0;transition:all .25s}
+.sc .av{width:28px;height:28px;border-radius:50%;background:#222;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--text);transition:background .25s}
+.sc .nm{font-size:8px;color:var(--muted);text-align:center;line-height:1.2;transition:color .25s}
+.sc.puja{background:var(--green-dim);border-color:var(--green-border)}
+.sc.puja .av{background:#166534}
+.sc.puja .nm{color:var(--green);font-weight:700}
+.sc.cambio{background:var(--yellow-dim);border-color:var(--yellow-border)}
+.sc.cambio .av{background:#6b4a0a}
+.sc.cambio .nm{color:var(--yellow);font-weight:700}
+.sc.nosigo{background:var(--red-dim);border-color:var(--red-border);opacity:.6}
+.sc.nosigo .av{background:#7f1d1d}
+.sc.nosigo .nm{color:var(--red)}
+
+.video{flex:1;position:relative;overflow:hidden;background:#050301;min-height:0}
+.vbg{position:absolute;inset:0;background:linear-gradient(165deg,#0d0804 0%,#1a1005 40%,#241508 65%,#0e0804 100%)}
+.vbg svg{position:absolute;inset:0;width:100%;height:100%}
+.live-pill{position:absolute;top:8px;left:8px;background:#dc2626;color:#fff;font-size:8px;font-weight:700;padding:2px 7px;border-radius:20px;display:flex;align-items:center;gap:3px;letter-spacing:.7px}
+.ldot{width:5px;height:5px;background:#fff;border-radius:50%;animation:blink 1.1s infinite}
+.price-box{position:absolute;top:34px;left:8px;background:rgba(0,0,0,.78);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:5px 10px}
+.pl{font-size:7px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase}
+.pv{font-size:18px;font-weight:700;color:var(--yellow);font-family:var(--mono);transition:color .3s}
+.pv.up{color:var(--green)}
+.pu{font-size:7px;color:var(--muted)}
+.inc-badge{position:absolute;top:100px;left:8px;background:rgba(0,0,0,.7);border:1px solid var(--yellow-border);color:var(--yellow);font-size:9px;font-weight:600;padding:2px 8px;border-radius:5px;font-family:var(--mono);display:none}
+.inc-badge.show{display:block}
+.host-tag{position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.6);color:#777;font-size:9px;padding:2px 7px;border-radius:5px}
+.lot-overlay{position:absolute;inset:0;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;z-index:30;opacity:0;pointer-events:none;transition:opacity .4s}
+.lot-overlay.show{opacity:1;pointer-events:auto}
+.lot-num{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:2px;text-transform:uppercase;font-family:var(--mono)}
+.lot-title{font-size:22px;font-weight:700;color:var(--yellow);font-family:var(--mono)}
+.lot-detail{font-size:11px;color:#888;margin-top:2px}
+.ended-overlay{position:absolute;inset:0;background:rgba(0,0,0,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:40;opacity:0;pointer-events:none;transition:opacity .5s}
+.ended-overlay.show{opacity:1;pointer-events:auto}
+.ended-icon{font-size:40px}
+.ended-title{font-size:18px;font-weight:700;color:var(--text)}
+.ended-price{font-size:28px;font-weight:700;color:var(--yellow);font-family:var(--mono)}
+
+.actions{position:absolute;right:8px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:12px;z-index:5}
+.aw{position:relative}
+.ab{width:52px;height:52px;border-radius:50%;background:rgba(18,18,18,.9);border:2px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;transition:all .15s;box-shadow:0 3px 14px rgba(0,0,0,.5);user-select:none}
+.ab:not(.disabled):active{transform:scale(.88)}
+.albl{position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);font-size:7px;color:rgba(255,255,255,.3);white-space:nowrap;font-weight:600;pointer-events:none}
+.ab.gbtn{background:rgba(22,101,52,.9);border-color:var(--green);box-shadow:0 0 0 3px rgba(34,197,94,.2),0 3px 14px rgba(0,0,0,.5)}
+.ab.ybtn{background:rgba(107,74,10,.9);border-color:var(--yellow);box-shadow:0 0 0 3px rgba(251,191,36,.2),0 3px 14px rgba(0,0,0,.5)}
+.ab.rbtn{background:rgba(127,29,29,.9);border-color:var(--red);box-shadow:0 0 0 3px rgba(248,113,113,.2),0 3px 14px rgba(0,0,0,.5)}
+.ab.disabled{opacity:.3;cursor:default}
+.cpop{position:absolute;right:60px;top:50%;transform:translateY(-50%);background:rgba(18,18,18,.97);border:1px solid #333;border-radius:11px;padding:4px;display:none;flex-direction:column;gap:3px;z-index:20;min-width:90px}
+.cpop.open{display:flex}
+.co{padding:10px 12px;border-radius:7px;background:var(--yellow-dim);border:1px solid var(--yellow-border);color:var(--yellow);font-size:11px;font-weight:600;cursor:pointer;text-align:center}
+.co:active{background:rgba(251,191,36,.28)}
+
+.toast{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(18,18,18,.96);border:1px solid #333;border-radius:9px;padding:6px 13px;color:var(--text);font-size:10px;font-weight:500;white-space:nowrap;z-index:50;opacity:0;transition:opacity .25s;pointer-events:none;max-width:260px;text-align:center}
+.toast.show{opacity:1}
+
+.bottom{background:var(--surface2);flex-shrink:0;border-top:1px solid var(--border)}
+.plist{padding:6px 9px 2px}
+.plt{font-size:8px;color:#444;font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-bottom:3px}
+.prows{display:flex;flex-direction:column;gap:2px;max-height:80px;overflow-y:auto}
+.pr{display:flex;align-items:center;gap:6px;padding:4px 7px;border-radius:6px;transition:all .3s;border:1px solid transparent}
+.pi{width:22px;height:22px;border-radius:50%;background:#1e1e1e;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--text);flex-shrink:0}
+.pinfo{flex:1}
+.pn{font-size:10px;color:#777;font-weight:500}
+.ps{font-size:8px;color:#444;margin-top:1px}
+.pico{font-size:11px}
+.pr.puja{background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.25)}
+.pr.puja .pi{background:#166534}
+.pr.puja .pn{color:var(--green);font-weight:700}
+.pr.cambio{background:var(--yellow-dim);border-color:var(--yellow-border)}
+.pr.cambio .pi{background:#6b4a0a}
+.pr.cambio .pn{color:var(--yellow);font-weight:700}
+.pr.nosigo{background:var(--red-dim);border-color:var(--red-border);opacity:.6}
+.pr.nosigo .pi{background:#7f1d1d}
+.pr.nosigo .pn{color:var(--red)}
+
+.quick{display:flex;gap:4px;padding:5px 9px;border-top:1px solid #1a1a1a;border-bottom:1px solid #1a1a1a}
+.qb{flex:1;padding:6px 3px;background:#1a1a1a;border:1px solid #252525;border-radius:7px;color:#777;font-size:10px;font-weight:600;text-align:center;cursor:pointer;font-family:inherit}
+.qb:active{background:#222}
+.chat{padding:0 9px 2px}
+.msgs{max-height:55px;overflow-y:auto;padding:3px 0;scroll-behavior:smooth}
+.msgs::-webkit-scrollbar{width:2px}
+.msgs::-webkit-scrollbar-thumb{background:#333;border-radius:2px}
+.msg{font-size:10px;color:#666;padding:1.5px 0;line-height:1.4;animation:fu .2s ease}
+.msg .fr{font-weight:700}
+.msg .fr.m{color:#d97706}
+.msg .fr.u{color:#60a5fa}
+.msg.sys{color:#444;font-style:italic}
+@keyframes fu{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.typing{display:none;align-items:center;gap:4px;padding:2px 0}
+.typing.on{display:flex}
+.tf{font-size:9px;color:#d97706;font-weight:700}
+.dots span{width:3px;height:3px;border-radius:50%;background:#d97706;opacity:.3;display:inline-block;margin:0 1px;animation:dt 1.2s infinite}
+.dots span:nth-child(2){animation-delay:.2s}
+.dots span:nth-child(3){animation-delay:.4s}
+@keyframes dt{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+.chin{display:flex;align-items:center;gap:5px;padding:4px 0 6px;border-top:1px solid #1a1a1a;margin-top:3px}
+.chin input{flex:1;background:#1a1a1a;border:1px solid #252525;border-radius:16px;padding:5px 11px;color:var(--text);font-size:10px;font-family:inherit;outline:none}
+.chin input::placeholder{color:#444}
+.csnd{width:24px;height:24px;background:#1d4ed8;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;cursor:pointer;flex-shrink:0}
+
+/* Connection status */
+.conn-dot{width:6px;height:6px;border-radius:50%;background:#555;display:inline-block;margin-left:4px}
+.conn-dot.online{background:var(--green)}
+.conn-dot.offline{background:var(--red);animation:blink 1s infinite}
+</style>
+</head>
+<body>
+
+<!-- JOIN SCREEN -->
+<div id="joinScreen">
+  <div class="join-logo">🐄</div>
+  <div class="join-title">Cattle Call</div>
+  <div class="join-sub">Ingresá el código del remate y tu nombre</div>
+  <div class="join-form">
+    <input class="join-input" id="joinCode" placeholder="Código (ej: 123456)" maxlength="6" inputmode="numeric" autocomplete="off"/>
+    <input class="join-input" id="joinName" placeholder="Tu nombre" maxlength="24" style="letter-spacing:0"/>
+    <button class="join-btn" onclick="joinRoom()">Entrar al remate →</button>
+    <div class="join-error" id="joinError"></div>
+  </div>
+</div>
+
+<!-- WAITING SCREEN -->
+<div id="waitScreen">
+  <div class="wait-dot"></div>
+  <div class="wait-title">Esperando al martillero...</div>
+  <div class="wait-room" id="waitRoomCode">------</div>
+  <div class="wait-sub">El remate comenzará en breve.<br>No cierres esta pantalla.</div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <div class="sbar">
+    <span class="t" id="clk">9:41</span>
+    <span class="ic">📶🔋<span class="conn-dot" id="connDot"></span></span>
+  </div>
+  <div class="topbar">
+    <div>
+      <div class="ct" id="remateName">🐄 Cattle Call — Remate en vivo</div>
+      <div class="cm" id="lotSubtitle">Esperando lote...</div>
+    </div>
+    <div class="tmr" id="tmr">00:00</div>
+  </div>
+  <div class="strip" id="strip"></div>
+  <div class="video">
+    <div class="vbg" style="background:#000">
+      <video id="callerVideo" autoplay playsinline style="width:100%;height:100%;object-fit:contain;background:#000"></video>
+    </div>
+    <div class="live-pill"><div class="ldot"></div>EN VIVO</div>
+    <div class="price-box">
+      <div class="pl">Precio actual</div>
+      <div class="pv" id="priceDisp">$0</div>
+      <div class="pu">por cabeza</div>
+    </div>
+    <div class="inc-badge" id="incBadge">+$50/puja</div>
+    <div class="host-tag" id="hostTag">Martillero: —</div>
+    <div class="lot-overlay" id="lotOverlay">
+      <div class="lot-num" id="overlayLotNum">LOTE #—</div>
+      <div class="lot-title" id="overlayLotTitle">—</div>
+      <div class="lot-detail" id="overlayLotDetail">—</div>
+    </div>
+    <div class="ended-overlay" id="endedOverlay">
+      <div class="ended-icon">🔨</div>
+      <div class="ended-title">¡Vendido!</div>
+      <div class="ended-price" id="endedPrice">—</div>
+      <div style="font-size:11px;color:#555">Esperando siguiente lote...</div>
+    </div>
+    <div class="actions">
+      <div class="aw"><div class="ab disabled gbtn" id="btnP" onclick="doPuja()">🤚</div><div class="albl">OFERTAR</div></div>
+      <div class="aw">
+        <div class="ab disabled ybtn" id="btnC" onclick="doCambio()">🤏</div>
+        <div class="albl">CAMBIO</div>
+        <div class="cpop" id="cpop"></div>
+      </div>
+      <div class="aw"><div class="ab disabled rbtn" id="btnX" onclick="doNosigo()">🚫</div><div class="albl">NO SIGO</div></div>
+    </div>
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <!-- MODAL CONFIRMACIÓN PRIMERA PUJA DEL LOTE -->
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-title">¿Confirmás tu primera puja?</div>
+    <div class="confirm-sub">Solo te preguntamos en la primera puja del lote.<br>Las siguientes salen al toque.</div>
+    <div class="confirm-actions">
+      <div class="confirm-btn go" onclick="confirmPuja()">✋ Confirmar puja</div>
+      <div class="confirm-btn cancel" onclick="cancelPuja()">Cancelar</div>
+    </div>
+  </div>
+  <div class="bottom">
+    <div class="plist"><div class="plt">Participantes activos</div><div class="prows" id="prows"></div></div>
+    <div class="quick">
+      <button class="qb" onclick="sendQuick('sí')">👍 "sí"</button>
+      <button class="qb" onclick="sendQuick('no')">👎 "no"</button>
+      <button class="qb" onclick="sendQuick('espera')">⏳ "espera"</button>
+    </div>
+    <div class="chat">
+      <div class="msgs" id="msgs"></div>
+      <div class="typing" id="typing"><span class="tf">Martillero</span><div class="dots"><span></span><span></span><span></span></div></div>
+      <div class="chin">
+        <input id="cin" placeholder="Escribir mensaje..." onkeydown="if(event.key==='Enter')sendChat()"/>
+        <button class="csnd" onclick="sendChat()">➤</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase SDK -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
+import { getDatabase, ref, set, onValue, push, get, update, serverTimestamp, onDisconnect, onChildAdded } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js";
+
+// ── FIREBASE CONFIG ──
+// Reemplazá con tu config de Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyCj6fGbSjQjnM8KELofdAOg1tGaYDhW7UE",
+  authDomain: "cattle-call-38704.firebaseapp.com",
+  databaseURL: "https://cattle-call-38704-default-rtdb.firebaseio.com",
+  projectId: "cattle-call-38704",
+  storageBucket: "cattle-call-38704.firebasestorage.app",
+  messagingSenderId: "411199428228",
+  appId: "1:411199428228:web:6cd0e20f310eb2f93394d1"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+// ── STATE ──
+let roomCode = null;
+let myId = null;
+let myName = null;
+let myState = 'idle'; // idle | puja | cambio | nosigo
+let currentLot = null;
+let currentPrice = 0;
+let currentIncrement = 50;
+let cambioOptions = [10, 20];
+let auctionActive = false;
+let lotEnded = false;
+let secs = 0;
+let timerInterval = null;
+let lastLotId = null;
+let hasBidThisLot = false; // se resetea con cada lote nuevo
+
+// ── UTILS ──
+function fmt(p){ return '$' + Number(p).toLocaleString('es-AR'); }
+function uid(){ return Math.random().toString(36).slice(2,10); }
+
+// ── CLOCK ──
+function clkTick(){ const n=new Date(); document.getElementById('clk').textContent=n.getHours()+':'+String(n.getMinutes()).padStart(2,'0'); }
+clkTick(); setInterval(clkTick,10000);
+
+// ── TOAST ──
+let toastT;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// ── CHAT ──
+function addMsg(from,text,type=''){
+  const el=document.createElement('div');
+  el.className='msg'+(type==='sys'?' sys':'');
+  if(type==='sys'){ el.innerHTML=`<span style="font-style:italic;color:#444">— ${text} —</span>`; }
+  else { const cl=from==='Martillero'?'m':from===myName?'u':''; el.innerHTML=`<span class="fr ${cl}">${from}:</span> ${text}`; }
+  const c=document.getElementById('msgs'); c.appendChild(el); c.scrollTop=c.scrollHeight;
+}
+
+// ── BUTTONS ──
+function enableButtons(puja,cambio,nosigo){
+  document.getElementById('btnP').classList.toggle('disabled',!puja);
+  document.getElementById('btnC').classList.toggle('disabled',!cambio);
+  document.getElementById('btnX').classList.toggle('disabled',!nosigo);
+}
+
+// ── PRICE DISPLAY ──
+function updatePriceDisplay(p){
+  currentPrice = p;
+  const el=document.getElementById('priceDisp');
+  el.textContent=fmt(p);
+  el.classList.add('up');
+  setTimeout(()=>el.classList.remove('up'),600);
+}
+
+// ── PARTICIPANTS STRIP & LIST ──
+function renderParticipants(participants){
+  if(!participants) return;
+  const parts = Object.values(participants).filter(p=>p.name);
+  // Sort: puja first, cambio, idle, nosigo
+  const order = {puja:0,cambio:1,idle:2,nosigo:3};
+  parts.sort((a,b)=>(order[a.state]||2)-(order[b.state]||2));
+
+  const stripEl = document.getElementById('strip');
+  const rowsEl = document.getElementById('prows');
+  const stateIcon = {idle:'',puja:'✋',cambio:'🤏',nosigo:'🚫'};
+  const stateLabel = {idle:'',puja:'Pujando',cambio:'Pide cambio',nosigo:'Se retiró'};
+
+  stripEl.innerHTML = parts.map(p=>{
+    const ini = p.name.slice(0,2).toUpperCase();
+    const isMe = p.id === myId;
+    const st = p.state||'idle';
+    return `<div class="sc ${st}"><div class="av">${ini}</div><div class="nm">${isMe?'(vos)':p.name}</div></div>`;
+  }).join('');
+
+  rowsEl.innerHTML = parts.map(p=>{
+    const ini = p.name.slice(0,2).toUpperCase();
+    const isMe = p.id === myId;
+    const st = p.state||'idle';
+    const lbl = stateLabel[st]||'';
+    return `<div class="pr ${st}">
+      <div class="pi">${ini}</div>
+      <div class="pinfo"><div class="pn">${isMe?p.name+' (vos)':p.name}</div>${lbl?`<div class="ps">${lbl}</div>`:''}</div>
+      <div class="pico">${stateIcon[st]||''}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── TIMER ──
+function startTimer(){
+  if(timerInterval) clearInterval(timerInterval);
+  secs=0;
+  timerInterval=setInterval(()=>{
+    secs++;
+    const m=String(Math.floor(secs/60)).padStart(2,'0');
+    const s=String(secs%60).padStart(2,'0');
+    document.getElementById('tmr').textContent=m+':'+s;
+  },1000);
+}
+
+// ── JOIN ──
+window.joinRoom = async function(){
+  const code = document.getElementById('joinCode').value.trim();
+  const name = document.getElementById('joinName').value.trim();
+  const errEl = document.getElementById('joinError');
+  errEl.textContent='';
+
+  if(code.length!==6||isNaN(code)){ errEl.textContent='El código debe tener 6 dígitos'; return; }
+  if(name.length<2){ errEl.textContent='Ingresá tu nombre (mín. 2 caracteres)'; return; }
+
+  // Check room exists
+  const roomSnap = await get(ref(db,`rooms/${code}`));
+  if(!roomSnap.exists()){ errEl.textContent='No existe ningún remate con ese código'; return; }
+
+  roomCode = code;
+  myName = name;
+  myId = uid();
+
+  // Register participant
+  const partRef = ref(db,`rooms/${roomCode}/participants/${myId}`);
+  await set(partRef,{ id:myId, name, state:'idle', joinedAt: Date.now() });
+
+  // Remove on disconnect
+  onDisconnect(partRef).remove();
+
+  document.getElementById('joinScreen').style.display='none';
+  document.getElementById('waitRoomCode').textContent=code;
+  document.getElementById('waitScreen').style.display='flex';
+
+  subscribeToRoom();
+}
+
+// ── SUBSCRIBE TO ROOM ──
+function subscribeToRoom(){
+  const connDot = document.getElementById('connDot');
+
+  // Connection state
+  onValue(ref(db,'.info/connected'), snap=>{
+    connDot.className = 'conn-dot ' + (snap.val() ? 'online' : 'offline');
+  });
+
+  // Room state
+  onValue(ref(db,`rooms/${roomCode}/auction`), snap=>{
+    const auction = snap.val();
+    if(!auction) return;
+
+    // Lot transition
+    if(auction.lotId && auction.lotId !== lastLotId){
+      lastLotId = auction.lotId;
+      handleNewLot(auction);
+    }
+
+    // Price update
+    if(auction.price !== undefined){ updatePriceDisplay(auction.price); }
+
+    // Increment
+    if(auction.increment !== undefined){
+      currentIncrement = auction.increment;
+      const badge = document.getElementById('incBadge');
+      badge.textContent=`+${fmt(auction.increment)}/puja`;
+      badge.classList.toggle('show', true);
+    }
+
+    // Cambio options
+    if(auction.cambioOptions){ cambioOptions=auction.cambioOptions; buildCambioMenu(); }
+
+    // Active state
+    auctionActive = auction.active || false;
+
+    // Lot ended
+    if(auction.lotStatus === 'ended' && !lotEnded){
+      lotEnded = true;
+      showEndedOverlay(auction.price);
+    }
+    if(auction.lotStatus === 'active'){ lotEnded=false; document.getElementById('endedOverlay').classList.remove('show'); }
+
+    // Name
+    if(auction.name){ document.getElementById('remateName').textContent='🐄 '+auction.name; }
+    if(auction.host){ document.getElementById('hostTag').textContent='Martillero: '+auction.host; }
+
+    // Show app
+    if(auctionActive && document.getElementById('waitScreen').style.display!=='none'){
+      document.getElementById('waitScreen').style.display='none';
+      document.getElementById('app').style.display='flex';
+      startTimer();
+    }
+  });
+
+  // Participants
+  onValue(ref(db,`rooms/${roomCode}/participants`), snap=>{
+    renderParticipants(snap.val());
+  });
+
+  // Chat
+  onValue(ref(db,`rooms/${roomCode}/chat`), snap=>{
+    // only process new messages (we track by count)
+  });
+  let lastChatCount=0;
+  onValue(ref(db,`rooms/${roomCode}/chat`), snap=>{
+    if(!snap.exists()) return;
+    const msgs=Object.values(snap.val()||{}).sort((a,b)=>a.ts-b.ts);
+    if(msgs.length>lastChatCount){
+      msgs.slice(lastChatCount).forEach(m=>{
+        if(m.from==='Martillero'||m.id!==myId) addMsg(m.from,m.text,m.type||'');
+      });
+      lastChatCount=msgs.length;
+    }
+  });
+
+  // My own state updates (to re-enable/disable buttons based on lot state)
+  onValue(ref(db,`rooms/${roomCode}/auction/active`), snap=>{
+    if(snap.val()){ enableButtons(true,true,true); }
+    else { enableButtons(false,false,false); }
+  });
+
+  // Start receiving video stream from host
+  startReceiving();
+}
+
+// ══════════════════════════════════════════════════════
+// WEBRTC RECEIVER (caller ← host, STUN only)
+// ══════════════════════════════════════════════════════
+let RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ],
+  iceCandidatePoolSize: 10
+};
+
+const METERED_APP = 'cattle-call';
+const METERED_API_KEY = '01541230a7e1aa91977507c4a6173052f6fb'; // ← reemplazar con la key regenerada
+async function loadIceServers(){
+  try {
+    const url = `https://${METERED_APP}.metered.live/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const servers = await res.json();
+    RTC_CONFIG.iceServers = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      ...servers
+    ];
+    console.log('✅ ICE servers cargados:', RTC_CONFIG.iceServers.length, 'entradas');
+  } catch(e){
+    console.warn('⚠ No se pudo cargar TURN, se sigue solo con STUN:', e);
+  }
+}
+
+let pc = null;
+
+async function startReceiving(){
+  await loadIceServers();
+  const base = `rooms/${roomCode}/video/peers/${myId}`;
+
+  pc = new RTCPeerConnection(RTC_CONFIG);
+
+  // Log the candidate type once connected
+  pc.onconnectionstatechange = async () => {
+    if(pc.connectionState === 'connected'){
+      try {
+        const stats = await pc.getStats();
+        stats.forEach(r => {
+          if(r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded'){
+            const local = stats.get(r.localCandidateId);
+            const remote = stats.get(r.remoteCandidateId);
+            console.log(`🔗 Conectado vía: ${local?.candidateType} ↔ ${remote?.candidateType} (${local?.protocol})`);
+          }
+        });
+      } catch(e){ console.warn('getStats failed', e); }
+    }
+  };
+
+  // Render incoming stream
+  pc.ontrack = (ev) => {
+    const v = document.getElementById('callerVideo');
+    if(v.srcObject !== ev.streams[0]){
+      v.srcObject = ev.streams[0];
+    }
+  };
+
+  // Send our ICE candidates to the host
+  pc.onicecandidate = (ev) => {
+    if(ev.candidate){
+      push(ref(db, `${base}/callerIce`), ev.candidate.toJSON());
+    }
+  };
+
+  // Listen for host's ICE candidates
+  onChildAdded(ref(db, `${base}/hostIce`), async (snap) => {
+    const cand = snap.val();
+    if(cand){
+      try { await pc.addIceCandidate(new RTCIceCandidate(cand)); }
+      catch(e){ console.error('addIceCandidate failed', e); }
+    }
+  });
+
+  // Listen for host's offer, answer it (only once)
+  let answered = false;
+  onValue(ref(db, `${base}/offer`), async (snap) => {
+    const offer = snap.val();
+    if(offer && !answered && !pc.currentRemoteDescription){
+      answered = true;
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await set(ref(db, `${base}/answer`), { type: answer.type, sdp: answer.sdp });
+      } catch(e){
+        answered = false;
+        console.error('answer flow failed', e);
+      }
+    }
+  });
+
+  // Announce arrival so host starts the connection
+  await set(ref(db, `rooms/${roomCode}/video/callers/${myId}`), { joinedAt: Date.now() });
+}
+
+// ── NEW LOT ──
+function handleNewLot(auction){
+  myState='idle';
+  lotEnded=false;
+  hasBidThisLot=false; // reset confirmación primera puja
+  updateMyState('idle');
+  document.getElementById('endedOverlay').classList.remove('show');
+
+  // Show overlay
+  document.getElementById('overlayLotNum').textContent=`LOTE #${auction.lotNum||'—'}`;
+  document.getElementById('overlayLotTitle').textContent=auction.lotDesc||'—';
+  document.getElementById('overlayLotDetail').textContent=auction.lotDetail||'';
+  document.getElementById('lotSubtitle').textContent=`Lote #${auction.lotNum} · ${auction.lotDesc}`;
+  document.getElementById('lotOverlay').classList.add('show');
+
+  addMsg('','Nuevo lote: '+auction.lotDesc,'sys');
+
+  setTimeout(()=>{
+    document.getElementById('lotOverlay').classList.remove('show');
+    if(auction.active) enableButtons(true,true,true);
+  },3500);
+}
+
+// ── ENDED OVERLAY ──
+function showEndedOverlay(price){
+  document.getElementById('endedPrice').textContent=fmt(price)+' por cabeza';
+  document.getElementById('endedOverlay').classList.add('show');
+  enableButtons(false,false,false);
+  myState='idle';
+}
+
+// ── UPDATE MY STATE ──
+async function updateMyState(state){
+  myState=state;
+  await update(ref(db,`rooms/${roomCode}/participants/${myId}`),{state});
+}
+
+// ── CAMBIO MENU ──
+function buildCambioMenu(){
+  const pop=document.getElementById('cpop');
+  pop.innerHTML=cambioOptions.map(o=>`<div class="co" onclick="selCambio(${o})">DE A ${fmt(o)}</div>`).join('');
+}
+
+// ── ACCIONES ──
+window.doPuja = async function(){
+  if(document.getElementById('btnP').classList.contains('disabled')) return;
+  closeCpop();
+
+  // Si es la primera puja del lote, mostrar modal de confirmación
+  if(!hasBidThisLot){
+    document.getElementById('confirmOverlay').classList.add('show');
+    return;
+  }
+
+  // Pujas siguientes: directo
+  await executePuja();
+}
+
+async function executePuja(){
+  myState='puja';
+  hasBidThisLot=true;
+  await updateMyState('puja');
+  await push(ref(db,`rooms/${roomCode}/chat`),{ from:myName, text:`puja`, id:myId, ts:Date.now(), type:'bid' });
+  toast('✋ Puja');
+  addMsg('','Pujaste','sys');
+  enableButtons(true,true,true);
+}
+
+window.confirmPuja = async function(){
+  document.getElementById('confirmOverlay').classList.remove('show');
+  await executePuja();
+}
+
+window.cancelPuja = function(){
+  document.getElementById('confirmOverlay').classList.remove('show');
+  toast('Puja cancelada');
+}
+
+window.doCambio = function(){
+  if(document.getElementById('btnC').classList.contains('disabled')) return;
+  document.getElementById('cpop').classList.toggle('open');
+}
+
+function closeCpop(){ document.getElementById('cpop').classList.remove('open'); }
+
+window.selCambio = async function(inc){
+  closeCpop();
+  myState='cambio';
+  await updateMyState('cambio');
+  await push(ref(db,`rooms/${roomCode}/chat`),{ from:myName, text:`pide cambio de a ${fmt(inc)}`, id:myId, ts:Date.now(), type:'cambio' });
+  toast(`🤏 Cambio de a ${fmt(inc)}`);
+  addMsg('',`Pedí cambio de a ${fmt(inc)}`,'sys');
+}
+
+window.doNosigo = async function(){
+  if(document.getElementById('btnX').classList.contains('disabled')) return;
+  myState='nosigo';
+  await updateMyState('nosigo');
+  await push(ref(db,`rooms/${roomCode}/chat`),{ from:myName, text:'no sigue', id:myId, ts:Date.now(), type:'nosigo' });
+  enableButtons(false,false,false);
+  toast('🚫 Te retiraste');
+  addMsg('','Te retiraste de la puja','sys');
+}
+
+window.sendQuick = async function(word){
+  if(!roomCode) return;
+  await push(ref(db,`rooms/${roomCode}/chat`),{ from:myName, text:word, id:myId, ts:Date.now() });
+  addMsg(myName,word);
+}
+
+window.sendChat = async function(){
+  const inp=document.getElementById('cin');
+  const txt=inp.value.trim();
+  if(!txt||!roomCode) return;
+  inp.value='';
+  await push(ref(db,`rooms/${roomCode}/chat`),{ from:myName, text:txt, id:myId, ts:Date.now() });
+  addMsg(myName,txt);
+}
+
+document.addEventListener('click',e=>{
+  if(!document.getElementById('cpop').contains(e.target)&&!document.getElementById('btnC').contains(e.target)) closeCpop();
+});
+
+buildCambioMenu();
+</script>
+</body>
+</html>
