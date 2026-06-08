@@ -120,36 +120,6 @@ html,body{min-height:100vh;background:var(--bg);font-family:var(--font);color:va
 .conn-dot{width:7px;height:7px;border-radius:50%;background:var(--muted2)}
 .conn-dot.online{background:var(--green)}
 .conn-dot.offline{background:var(--red);animation:blink 1s infinite}
-
-/* Reconnect banner */
-.reconnect-banner{
-  position:fixed;top:0;left:0;right:0;z-index:150;
-  padding:10px 18px;
-  font-size:13px;font-weight:600;
-  display:none;align-items:center;justify-content:center;gap:10px;
-  transform:translateY(-100%);
-  transition:transform .25s ease, background .2s ease, color .2s ease, border-color .2s ease;
-}
-.reconnect-banner.show{display:flex;transform:translateY(0)}
-.reconnect-banner.unstable{
-  background:rgba(251,191,36,.12);
-  border-bottom:1px solid rgba(251,191,36,.4);
-  color:#fbbf24;
-}
-.reconnect-banner.down{
-  background:rgba(248,113,113,.12);
-  border-bottom:1px solid rgba(248,113,113,.4);
-  color:#f87171;
-}
-.reconnect-banner::before{
-  content:'';width:9px;height:9px;border-radius:50%;
-  background:currentColor;
-  animation:reconnect-pulse 1.4s ease-in-out infinite;
-}
-@keyframes reconnect-pulse{
-  0%,100%{opacity:.35;transform:scale(.85)}
-  50%{opacity:1;transform:scale(1.15)}
-}
 .tbtn{
   background:var(--surface3);border:1px solid var(--border2);border-radius:var(--radius);
   padding:5px 12px;font-size:11px;color:var(--muted);cursor:pointer;font-family:var(--font);
@@ -518,8 +488,6 @@ html,body{min-height:100vh;background:var(--bg);font-family:var(--font);color:va
 ════════════════════════════════════════ -->
 <div id="hostScreen">
 
-  <div class="reconnect-banner" id="reconnectBanner"><span id="reconnectText">Reconectando…</span></div>
-
   <!-- TOPBAR -->
   <div class="topbar">
     <div class="tl">
@@ -731,52 +699,6 @@ let currentIncrement = 50;
 let currentCambioOptions = [10, 20];
 let lastChatCount = 0;
 let lotActive = true;
-let fbConnected = true;
-let connectionQuality = 'good'; // 'good' | 'unstable' | 'down'
-let pingInterval = null;
-let pingFailCount = 0;
-
-function updateReconnectBanner(){
-  const el = document.getElementById('reconnectBanner');
-  const txt = document.getElementById('reconnectText');
-  if(!el) return;
-  const down = !fbConnected || connectionQuality === 'down';
-  if(down){
-    el.className = 'reconnect-banner show down';
-    txt.textContent = 'Reconectando…';
-  } else if(connectionQuality === 'unstable'){
-    el.className = 'reconnect-banner show unstable';
-    txt.textContent = 'Conexión inestable';
-  } else {
-    el.className = 'reconnect-banner';
-  }
-}
-
-function pingWithTimeout(ms){
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('timeout')), ms);
-    set(ref(db, `rooms/${roomCode}/auction/hostPing`), Date.now())
-      .then(() => { clearTimeout(timer); resolve(); })
-      .catch(e => { clearTimeout(timer); reject(e); });
-  });
-}
-
-function startHostPing(){
-  if(pingInterval) clearInterval(pingInterval);
-  pingFailCount = 0;
-  pingInterval = setInterval(async () => {
-    if(!roomCode) return;
-    try {
-      await pingWithTimeout(2000);
-      pingFailCount = 0;
-      connectionQuality = 'good';
-    } catch(e){
-      pingFailCount++;
-      connectionQuality = pingFailCount >= 2 ? 'down' : 'unstable';
-    }
-    updateReconnectBanner();
-  }, 5000);
-}
 
 // ══════════════════════════════════════════════════════
 // AUTH (host email/password)
@@ -1124,13 +1046,8 @@ async function connectToCaller(callerId){
 function subscribeToRoom(){
   const connDot = document.getElementById('connDot');
   onValue(ref(db, '.info/connected'), snap=>{
-    const ok = !!snap.val();
-    connDot.className = 'conn-dot ' + (ok ? 'online' : 'offline');
-    fbConnected = ok;
-    updateReconnectBanner();
+    connDot.className = 'conn-dot ' + (snap.val() ? 'online' : 'offline');
   });
-
-  startHostPing();
 
   // Participants
   onValue(ref(db, `rooms/${roomCode}/participants`), snap=>{
@@ -1399,7 +1316,8 @@ window.sendChat = async function(){
   await push(ref(db, `rooms/${roomCode}/chat`), {
     from: 'Martillero', text: txt, ts: Date.now()
   });
-  addChatMsg('Martillero', txt);
+  // El listener de chat (onValue en chat) renderiza el mensaje al
+  // volver de Firebase; no agregamos al UI aca para evitar duplicado.
 };
 
 // ══════════════════════════════════════════════════════

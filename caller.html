@@ -735,6 +735,13 @@ window.doNosigo = async function(){
   enableButtons(false,false,false);
   toast('🚫 Te retiraste');
   addMsg('','Te retiraste de la puja','sys');
+  // Cooldown de 4s: si el lote sigue activo, vuelve a habilitar los botones
+  // para permitir re-puja estrategica.
+  setTimeout(()=>{
+    if(auctionActive && !lotEnded){
+      enableButtons(true,true,true);
+    }
+  }, 4000);
 }
 
 window.sendQuick = async function(word){
