@@ -90,9 +90,7 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',system-ui,sans-
   display:none;flex-direction:column;height:100%;max-width:430px;margin:0 auto;
   background:var(--surface);
 }
-.sbar{height:36px;background:var(--surface2);display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;border-bottom:1px solid var(--border)}
-.sbar .t{color:var(--text);font-size:12px;font-weight:600}
-.sbar .ic{color:var(--muted);font-size:11px}
+.sbar{display:none}
 .topbar{background:var(--surface2);padding:6px 12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid var(--border)}
 .ct{color:var(--text);font-size:11px;font-weight:600}
 .cm{color:var(--muted);font-size:9px;margin-top:1px}
@@ -229,16 +227,12 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',system-ui,sans-
 
 <!-- MAIN APP -->
 <div id="app">
-  <div class="sbar">
-    <span class="t" id="clk">9:41</span>
-    <span class="ic">📶🔋<span class="conn-dot" id="connDot"></span></span>
-  </div>
   <div class="topbar">
     <div>
       <div class="ct" id="remateName">🐄 Cattle Call — Remate en vivo</div>
       <div class="cm" id="lotSubtitle">Esperando lote...</div>
     </div>
-    <div class="tmr" id="tmr">00:00</div>
+    <div class="tmr" id="tmr">00:00<span class="conn-dot" id="connDot"></span></div>
   </div>
   <div class="strip" id="strip"></div>
   <div class="video">
@@ -342,10 +336,6 @@ let hasBidThisLot = false; // se resetea con cada lote nuevo
 // ── UTILS ──
 function fmt(p){ return '$' + Number(p).toLocaleString('es-AR'); }
 function uid(){ return Math.random().toString(36).slice(2,10); }
-
-// ── CLOCK ──
-function clkTick(){ const n=new Date(); document.getElementById('clk').textContent=n.getHours()+':'+String(n.getMinutes()).padStart(2,'0'); }
-clkTick(); setInterval(clkTick,10000);
 
 // ── TOAST ──
 let toastT;
