@@ -283,6 +283,13 @@ html,body{min-height:100vh;background:var(--bg);font-family:var(--font);color:va
 .toast-global{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(20,20,20,.97);border:1px solid #333;border-radius:9px;padding:8px 16px;color:var(--text);font-size:12px;font-weight:500;z-index:999;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
 .toast-global.show{opacity:1}
 
+/* Connection health banner */
+.conn-banner{position:fixed;top:0;left:0;right:0;padding:8px 16px;font-size:13px;font-weight:600;text-align:center;display:none;z-index:9999;letter-spacing:.3px}
+.conn-banner.show{display:block}
+.conn-banner.warn{background:#854f0b;color:#fde68a;border-bottom:1px solid #fbbf24}
+.conn-banner.err{background:#7f1d1d;color:#fecaca;border-bottom:1px solid #f87171;animation:cbpulse 1.4s ease-in-out infinite}
+@keyframes cbpulse{0%,100%{opacity:1}50%{opacity:.65}}
+
 /* Lot config modal */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:center;justify-content:center}
 .modal-bg.show{display:flex}
@@ -487,6 +494,9 @@ html,body{min-height:100vh;background:var(--bg);font-family:var(--font);color:va
      MAIN HOST SCREEN
 ════════════════════════════════════════ -->
 <div id="hostScreen">
+
+  <!-- CONNECTION HEALTH BANNER -->
+  <div class="conn-banner" id="connBanner"></div>
 
   <!-- TOPBAR -->
   <div class="topbar">
@@ -996,6 +1006,12 @@ async function connectToCaller(callerId){
 
   pc.onconnectionstatechange = async () => {
     if(pc.connectionState === 'connected'){
+      // Recovered: cancel any pending cleanup
+      if(pc._failureTimer){
+        clearTimeout(pc._failureTimer);
+        pc._failureTimer = null;
+        console.log('Peer', callerId, 'recovered, cleanup canceled');
+      }
       try {
         const stats = await pc.getStats();
         stats.forEach(r => {
@@ -1008,7 +1024,25 @@ async function connectToCaller(callerId){
       } catch(e){ console.warn('getStats failed', e); }
     }
     if(pc.connectionState === 'failed' || pc.connectionState === 'disconnected'){
-      console.warn('Peer', callerId, pc.connectionState);
+      console.warn('Peer', callerId, pc.connectionState, '— 20s grace before cleanup');
+      if(!pc._failureTimer){
+        pc._failureTimer = setTimeout(async () => {
+          // Identity check: only clean up if THIS pc is still the registered one.
+          // If the caller reconnected and a new pc was created, peerConnections[callerId]
+          // would point to that new pc — leave it alone.
+          if(peerConnections[callerId] !== pc){
+            console.log('Peer', callerId, 'replaced by reconnection — skip cleanup');
+            return;
+          }
+          console.log('Peer', callerId, 'expired grace window — closing & cleaning Firebase');
+          try { pc.close(); } catch(e){}
+          delete peerConnections[callerId];
+          try {
+            await remove(ref(db, `rooms/${roomCode}/video/peers/${callerId}`));
+            await remove(ref(db, `rooms/${roomCode}/video/callers/${callerId}`));
+          } catch(e){ console.warn('Firebase cleanup failed', e); }
+        }, 20000);
+      }
     }
   };
 
@@ -1041,12 +1075,58 @@ async function connectToCaller(callerId){
 }
 
 // ══════════════════════════════════════════════════════
+// CONNECTION HEALTH (host writes hostPing every 3s)
+// ══════════════════════════════════════════════════════
+let hostMissedPings = 0;
+let hostPingInterval = null;
+let hostFirebaseOnline = true;
+const _connBanner = () => document.getElementById('connBanner');
+
+function showHostBanner(level){
+  const el = _connBanner(); if(!el) return;
+  el.className = 'conn-banner show ' + level;
+  el.textContent = level === 'err' ? '🔴 Reconectando…' : '🟡 Conexión inestable';
+}
+function hideHostBanner(){
+  const el = _connBanner(); if(!el) return;
+  el.className = 'conn-banner';
+}
+
+async function pingHost(){
+  if(!roomCode) return;
+  // Firebase doesn't throw when offline — it queues. Use Promise.race + manual timeout.
+  const writePromise = update(ref(db, `rooms/${roomCode}/auction`), { hostPing: Date.now() });
+  const timeoutPromise = new Promise((_,rej)=>setTimeout(()=>rej(new Error('ping-timeout')), 2500));
+  try{
+    await Promise.race([writePromise, timeoutPromise]);
+    if(hostMissedPings > 0 && hostFirebaseOnline){
+      hostMissedPings = 0;
+      hideHostBanner();
+    }
+  }catch(e){
+    hostMissedPings++;
+    if(hostMissedPings >= 2 || !hostFirebaseOnline) showHostBanner('err');
+    else showHostBanner('warn');
+  }
+}
+
+function startHostPing(){
+  if(hostPingInterval) clearInterval(hostPingInterval);
+  pingHost();
+  hostPingInterval = setInterval(pingHost, 3000);
+}
+
+// ══════════════════════════════════════════════════════
 // SUBSCRIBE TO ROOM (real-time listeners)
 // ══════════════════════════════════════════════════════
 function subscribeToRoom(){
   const connDot = document.getElementById('connDot');
   onValue(ref(db, '.info/connected'), snap=>{
-    connDot.className = 'conn-dot ' + (snap.val() ? 'online' : 'offline');
+    const online = !!snap.val();
+    hostFirebaseOnline = online;
+    connDot.className = 'conn-dot ' + (online ? 'online' : 'offline');
+    if(!online) showHostBanner('err');
+    // when online again, next successful pingHost() hides the banner
   });
 
   // Participants
@@ -1081,6 +1161,9 @@ function subscribeToRoom(){
       lastChatCount = msgs.length;
     }
   });
+
+  // Start heartbeat ping every 3s
+  startHostPing();
 }
 
 // Sacudida visual de la tarjeta del participante (manga + lista)

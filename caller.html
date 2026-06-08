@@ -151,6 +151,13 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',system-ui,sans-
 .toast{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(18,18,18,.96);border:1px solid #333;border-radius:9px;padding:6px 13px;color:var(--text);font-size:10px;font-weight:500;white-space:nowrap;z-index:50;opacity:0;transition:opacity .25s;pointer-events:none;max-width:260px;text-align:center}
 .toast.show{opacity:1}
 
+/* Connection health banner */
+.conn-banner{position:fixed;top:0;left:0;right:0;padding:8px 14px;font-size:13px;font-weight:600;text-align:center;display:none;z-index:9999;letter-spacing:.3px}
+.conn-banner.show{display:block}
+.conn-banner.warn{background:#854f0b;color:#fde68a;border-bottom:1px solid #fbbf24}
+.conn-banner.err{background:#7f1d1d;color:#fecaca;border-bottom:1px solid #f87171;animation:cbpulse 1.4s ease-in-out infinite}
+@keyframes cbpulse{0%,100%{opacity:1}50%{opacity:.65}}
+
 .bottom{background:var(--surface2);flex:1;display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--border)}
 .plist{padding:6px 9px 2px}
 .plt{font-size:8px;color:#444;font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-bottom:3px}
@@ -227,6 +234,7 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',system-ui,sans-
 
 <!-- MAIN APP -->
 <div id="app">
+  <div class="conn-banner" id="connBanner"></div>
   <div class="topbar">
     <div>
       <div class="ct" id="remateName">🐄 Cattle Call — Remate en vivo</div>
@@ -333,6 +341,13 @@ let timerInterval = null;
 let lastLotId = null;
 let hasBidThisLot = false; // se resetea con cada lote nuevo
 
+// ── CONNECTION HEALTH STATE ──
+let myPartRef = null;
+let myJoinedAt = null;
+let lastHostPing = Date.now();
+let callerFirebaseOnline = true;
+let callerHealthInterval = null;
+
 // ── UTILS ──
 function fmt(p){ return '$' + Number(p).toLocaleString('es-AR'); }
 function uid(){ return Math.random().toString(36).slice(2,10); }
@@ -432,13 +447,14 @@ window.joinRoom = async function(){
   roomCode = code;
   myName = name;
   myId = uid();
+  myJoinedAt = Date.now();
 
   // Register participant
-  const partRef = ref(db,`rooms/${roomCode}/participants/${myId}`);
-  await set(partRef,{ id:myId, name, state:'idle', joinedAt: Date.now() });
+  myPartRef = ref(db,`rooms/${roomCode}/participants/${myId}`);
+  await set(myPartRef,{ id:myId, name, state:'idle', joinedAt: myJoinedAt });
 
   // Remove on disconnect
-  onDisconnect(partRef).remove();
+  onDisconnect(myPartRef).remove();
 
   document.getElementById('joinScreen').style.display='none';
   document.getElementById('waitRoomCode').textContent=code;
@@ -447,14 +463,60 @@ window.joinRoom = async function(){
   subscribeToRoom();
 }
 
+// ── CONNECTION HEALTH ──
+function showCallerBanner(level){
+  const el = document.getElementById('connBanner'); if(!el) return;
+  el.className = 'conn-banner show ' + level;
+  el.textContent = level === 'err' ? '🔴 Reconectando…' : '🟡 Conexión inestable';
+}
+function hideCallerBanner(){
+  const el = document.getElementById('connBanner'); if(!el) return;
+  el.className = 'conn-banner';
+}
+function checkCallerHealth(){
+  const age = Date.now() - lastHostPing;
+  if(!callerFirebaseOnline || age > 13000){
+    showCallerBanner('err');
+  } else if(age > 7000){
+    showCallerBanner('warn');
+  } else {
+    hideCallerBanner();
+  }
+}
+
 // ── SUBSCRIBE TO ROOM ──
 function subscribeToRoom(){
   const connDot = document.getElementById('connDot');
 
-  // Connection state
+  // Firebase connection state (own connection)
   onValue(ref(db,'.info/connected'), snap=>{
-    connDot.className = 'conn-dot ' + (snap.val() ? 'online' : 'offline');
+    const online = !!snap.val();
+    const wasOffline = !callerFirebaseOnline;
+    callerFirebaseOnline = online;
+    connDot.className = 'conn-dot ' + (online ? 'online' : 'offline');
+    if(!online){
+      showCallerBanner('err');
+    } else if(wasOffline && myPartRef){
+      // Reconnected: rewrite participant node + rearm onDisconnect
+      set(myPartRef, { id:myId, name:myName, state:myState, joinedAt: myJoinedAt })
+        .then(()=>onDisconnect(myPartRef).remove())
+        .catch(e=>console.warn('reconnect rewrite failed', e));
+      lastHostPing = Date.now(); // give grace; next ping will arrive shortly
+    }
+    checkCallerHealth();
   });
+
+  // Host heartbeat (track freshness)
+  onValue(ref(db,`rooms/${roomCode}/auction/hostPing`), snap=>{
+    if(snap.exists()){
+      lastHostPing = Date.now();
+      checkCallerHealth();
+    }
+  });
+
+  // Watchdog: re-check banner every 1.5s based on ping age
+  if(callerHealthInterval) clearInterval(callerHealthInterval);
+  callerHealthInterval = setInterval(checkCallerHealth, 1500);
 
   // Room state
   onValue(ref(db,`rooms/${roomCode}/auction`), snap=>{
