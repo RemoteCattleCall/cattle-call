@@ -709,6 +709,8 @@ let currentIncrement = 50;
 let currentCambioOptions = [10, 20];
 let lastChatCount = 0;
 let lotActive = true;
+let lotHistory = []; // [{lotNum, lotDesc, price}]
+let auctionName = '';
 
 // ══════════════════════════════════════════════════════
 // AUTH (host email/password)
@@ -899,6 +901,9 @@ window.startAuction = async function(){
     participants: {},
     chat: {}
   });
+
+  // Store auction name for summary
+  auctionName = name;
 
   // Initialize UI
   document.getElementById('topRemateName').textContent = name;
@@ -1278,6 +1283,10 @@ window.applyIncrement = async function(){
 
 window.endLot = async function(){
   if(!roomCode) return;
+  // Save lot to history before closing
+  const curNum = parseInt(document.getElementById('lctLot').textContent.replace('#','')) || 1;
+  const curDesc = document.getElementById('lctDesc').textContent || '';
+  lotHistory.push({ lotNum: curNum, lotDesc: curDesc, price: currentPrice });
   lotActive = false;
   document.getElementById('lotEndedOv').classList.add('show');
   document.getElementById('lePrice').textContent = fmt(currentPrice) + ' por cabeza';
@@ -1399,6 +1408,7 @@ window.sendChat = async function(){
   await push(ref(db, `rooms/${roomCode}/chat`), {
     from: 'Martillero', text: txt, ts: Date.now()
   });
+  addChatMsg('Martillero', txt);
 };
 
 // ══════════════════════════════════════════════════════
@@ -1454,13 +1464,110 @@ window.copyCode = function(){
 // ══════════════════════════════════════════════════════
 window.endAuction = async function(){
   if(!roomCode||!confirm('¿Finalizar el remate?')) return;
+
+  // If a lot is still active when ending, save it to history
+  if(lotActive){
+    const curNum = parseInt(document.getElementById('lctLot').textContent.replace('#','')) || 1;
+    const curDesc = document.getElementById('lctDesc').textContent || '';
+    lotHistory.push({ lotNum: curNum, lotDesc: curDesc, price: currentPrice });
+  }
+
   await update(ref(db, `rooms/${roomCode}/auction`), { active: false, lotStatus: 'ended' });
   await push(ref(db, `rooms/${roomCode}/chat`), {
     from: 'Martillero', text: 'Remate finalizado. Gracias.', ts: Date.now(), type: 'sys'
   });
   toast('Remate finalizado');
   if(timerInterval) clearInterval(timerInterval);
+
+  // Open summary in new tab
+  openAuctionSummary();
 };
+
+// ══════════════════════════════════════════════════════
+// AUCTION SUMMARY
+// ══════════════════════════════════════════════════════
+function openAuctionSummary(){
+  const now = new Date();
+  const fecha = now.toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' });
+  const hora  = now.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+
+  const rows = lotHistory.map((l, i) =>
+    `<tr>
+      <td>${l.lotNum}</td>
+      <td>${l.lotDesc || '—'}</td>
+      <td>$${Number(l.price).toLocaleString('es-AR')}</td>
+    </tr>`
+  ).join('');
+
+  const totalLotes = lotHistory.length;
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Resumen — ${auctionName || 'Remate'}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'DM Sans',system-ui,sans-serif;background:#fff;color:#111;padding:40px;max-width:720px;margin:0 auto}
+  .header{margin-bottom:32px}
+  .brand{font-size:11px;letter-spacing:1.5px;color:#888;font-weight:600;text-transform:uppercase;margin-bottom:6px}
+  h1{font-size:22px;font-weight:700;margin-bottom:4px}
+  .meta{font-size:13px;color:#666;display:flex;gap:16px;margin-top:8px}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  thead tr{background:#f5f5f5;border-top:2px solid #111;border-bottom:2px solid #111}
+  thead th{padding:10px 12px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#444}
+  tbody tr{border-bottom:1px solid #eee}
+  tbody tr:hover{background:#fafafa}
+  td{padding:10px 12px;font-size:14px;vertical-align:top}
+  td:first-child{font-weight:600;color:#111;white-space:nowrap}
+  td:last-child{font-family:'DM Mono',monospace;font-size:13px;font-weight:600;white-space:nowrap}
+  .footer{margin-top:24px;font-size:12px;color:#aaa;border-top:1px solid #eee;padding-top:12px;display:flex;justify-content:space-between}
+  .print-btn{margin-top:28px;display:block;padding:12px 24px;background:#111;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px}
+  .print-btn:hover{background:#222}
+  @media print{
+    .print-btn{display:none}
+    body{padding:20px}
+  }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">Cattle Call — Resumen de remate</div>
+    <h1>${auctionName || 'Remate'}</h1>
+    <div class="meta">
+      <span>📅 ${fecha}</span>
+      <span>🕐 ${hora}</span>
+      <span>📦 ${totalLotes} lote${totalLotes !== 1 ? 's' : ''}</span>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Lote</th>
+        <th>Descripción</th>
+        <th>Precio final</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows || '<tr><td colspan="3" style="color:#aaa;font-style:italic;text-align:center;padding:20px">Sin lotes registrados</td></tr>'}
+    </tbody>
+  </table>
+  <div class="footer">
+    <span>Generado por Cattle Call</span>
+    <span>Código de sala: ${roomCode || '—'}</span>
+  </div>
+  <button class="print-btn" onclick="window.print()">⬇ Guardar como PDF</button>
+</body>
+</html>`;
+
+  const w = window.open('', '_blank');
+  if(w){
+    w.document.write(html);
+    w.document.close();
+  } else {
+    toast('Habilitá las ventanas emergentes para ver el resumen');
+  }
+}
 
 // ══════════════════════════════════════════════════════
 // GLOBAL TOAST
